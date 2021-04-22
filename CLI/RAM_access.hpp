@@ -8,6 +8,8 @@
 #include <Windows.h>
 #include <WinUser.h>
 
+#include <iostream>
+
 namespace RAM
 {
 	class error_t : std::exception
@@ -19,6 +21,9 @@ namespace RAM
 		error_t() : ecode(0) {}
 		error_t(const std::string& context);
 		error_t& operator=(const error_t& other);
+		/**
+		 * \brief return if this instance contains an error
+		 */
 		bool is_error() const { return this->ecode != ERROR_SUCCESS; }
 		operator error_t* () { return this; }
 		/**
@@ -50,6 +55,8 @@ namespace RAM
 		 * \brief cast operator to make handle_t to HANDLE
 		 */
 		operator HANDLE() { return this->handle; }
+
+		inline void close() { CloseHandle(this->handle); }
 	};
 
 	class win_t
@@ -108,7 +115,7 @@ namespace RAM
 	};
 
 	template<typename T>
-	class buffer : std::vector<T>
+	class buffer : public std::vector<T>
 	{
 	public:
 		/**
@@ -127,7 +134,6 @@ namespace RAM
 				error_t::cause(err, "buffer::read: ReadProcessMemory() call failed");
 				return false;
 			}
-			this->resize(len / sizeof(T));
 			return true;
 		}
 		/**
@@ -155,24 +161,38 @@ namespace RAM
 	{
 	public:
 		const void* proc_addr;
-		handle_t handle;
 		variable() : proc_addr(nullptr) {}
 		variable(const void* proc_addr) : proc_addr(proc_addr) {}
-		// get the value from the other process
-		bool get_value(T& out, error_t* err = nullptr)
+		/**
+		 * \brief read a value from another process, process handle and virtual address are stored in this instance
+		 * 
+		 * \param handle process handle to read from
+		 * \param out where to write the output
+		 * \param err error handling
+		 * \return true if the call was successful
+		 */
+		bool get_value(handle_t handle, T& out, error_t* err = nullptr)
 		{
 			SIZE_T len;
-			if (ReadProcessMemory(this->handle, this->proc_addr, &out, sizeof(out), &len) == 0)
+			if (ReadProcessMemory(handle, this->proc_addr, &out, sizeof(out), &len) == 0)
 			{
 				error_t::cause(err, "variable::get_value: ReadProcessMemory() call failed");
 				return false;
 			}
 			return true;
 		}
-		bool set_value(const T& in, error_t* err = nullptr)
+		/**
+		 * \brief write a value into another process, process handle and virtual address are stored in this instance
+		 * 
+		 * \param handle process handle to write to
+		 * \param in what to write into the other process
+		 * \param err error handling
+		 * \return true if the call was successful
+		 */
+		bool set_value(handle_t handle, const T& in, error_t* err = nullptr)
 		{
 			SIZE_T len_written;
-			if (WriteProcessMemory(this->handle, this->proc_addr, &in, sizeof(in), &len_written) == 0)
+			if (WriteProcessMemory(handle, LPVOID(this->proc_addr), &in, sizeof(in), &len_written) == 0)
 			{
 				error_t::cause(err, "variable::get_value: ReadProcessMemory() call failed");
 				return false;
